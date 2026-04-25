@@ -517,6 +517,9 @@ ul,ol{list-style:none}
         <div class="info-strip">
           <p class="info-strip__text"><strong>Weekdays</strong> 11am–6pm &nbsp;|&nbsp; <strong>Weekends</strong> 9am–6pm &nbsp;|&nbsp; <strong>Closed when raining</strong></p>
         </div>
+        <div class="container" data-cms-news hidden style="padding:24px 24px 0">
+          <div class="news-list" style="display:flex;flex-direction:column;gap:16px;max-width:800px;margin:0 auto"></div>
+        </div>
         <div class="container" style="padding-top:40px;padding-bottom:40px">
           <div class="glass-card" style="max-width:600px;margin:0 auto;text-align:center">
             <h3 style="font-family:var(--font-display);font-size:1.5rem;margin-bottom:16px;color:var(--yellow)">📍 Bellville, Cape Town</h3>
@@ -1048,6 +1051,187 @@ function toggleTheme(){
     try{localStorage.setItem('theme','light')}catch(e){}
   }
 }
+</script>
+
+<script type="module">
+// Sanity CMS — Cool Runnings Cape Town
+// Project: k2su1awr / dataset: production
+import {createClient} from 'https://esm.sh/@sanity/client@6.22.5'
+import imageUrlBuilder from 'https://esm.sh/@sanity/image-url@1.1.0'
+
+const client = createClient({
+  projectId: 'k2su1awr',
+  dataset: 'production',
+  apiVersion: '2026-02-01',
+  useCdn: true,
+})
+const builder = imageUrlBuilder(client)
+const urlFor = (src) => builder.image(src)
+
+const QUERY = `{
+  "hero": *[_id == "hero"][0],
+  "hours": *[_id == "openingHours"][0],
+  "pricing": *[_id == "pricing"][0]{...,flyerImages[]{..., asset->}},
+  "contact": *[_id == "contact"][0],
+  "news": *[_type == "news" && publishedAt <= now() && (!defined(expiresAt) || expiresAt > now())] | order(pinned desc, publishedAt desc)[0...5]{..., image{asset->}},
+  "gallery": *[_type == "galleryImage"] | order(order asc){_id, alt, caption, image{asset->}}
+}`
+
+function setText(sel, text) {
+  if (text == null) return
+  const el = document.querySelector(sel)
+  if (el) el.textContent = text
+}
+
+function setHTML(sel, html) {
+  if (html == null) return
+  const el = document.querySelector(sel)
+  if (el) el.innerHTML = html
+}
+
+function renderHero(hero) {
+  if (!hero) return
+  setHTML('.hero__title', `${escapeHtml(hero.titleLine1)}<br><span>${escapeHtml(hero.titleLine2)}</span>`)
+  setText('.hero__subtitle', hero.subtitle)
+  if (hero.ctaPrimaryUrl) {
+    document.querySelectorAll('.navbar__cta, .hero__actions .btn-primary, #mobile-nav .btn-primary').forEach(a => {
+      a.href = hero.ctaPrimaryUrl
+      if (hero.ctaPrimaryLabel && (a.classList.contains('navbar__cta') || a.closest('#mobile-nav'))) {
+        a.textContent = hero.ctaPrimaryLabel
+      }
+    })
+  }
+}
+
+function renderHours(h) {
+  if (!h) return
+  const note = h.note ? ` &nbsp;|&nbsp; <strong>${escapeHtml(h.note)}</strong>` : ''
+  setHTML('.info-strip__text', `<strong>Weekdays</strong> ${escapeHtml(h.weekdays)} &nbsp;|&nbsp; <strong>Weekends</strong> ${escapeHtml(h.weekends)}${note}`)
+
+  // Footer "Hours" column — third footer__grid column
+  const footerCols = document.querySelectorAll('.footer__grid > div')
+  if (footerCols.length >= 3) {
+    const links = footerCols[2].querySelector('.footer__links')
+    if (links) {
+      const closure = h.note ? `<span class="footer__link" style="color:var(--yellow)">${escapeHtml(h.note)}</span>` : ''
+      links.innerHTML = `<span class="footer__link">Mon–Fri: ${escapeHtml(h.weekdays)}</span><span class="footer__link">Sat–Sun: ${escapeHtml(h.weekends)}</span>${closure}`
+    }
+  }
+
+  // Contact card — 4th item is hours
+  const items = document.querySelectorAll('#contact .contact-card__item')
+  if (items[3]) {
+    const v = items[3].querySelector('.contact-card__info-value')
+    if (v) {
+      const closure = h.note ? `<br><span style="color:var(--yellow)">${escapeHtml(h.note)}</span>` : ''
+      v.innerHTML = `Mon–Fri: ${escapeHtml(h.weekdays)}<br>Weekends: ${escapeHtml(h.weekends)}${closure}`
+    }
+  }
+}
+
+function renderPricing(p) {
+  if (!p) return
+  setText('#prices .section-subtitle', p.subtitle)
+  if (p.notice) {
+    setHTML('#prices .notice-box', `<strong>📌 ${escapeHtml((p.notice.split(':')[0] || 'Notice'))}:</strong> ${escapeHtml(p.notice.split(':').slice(1).join(':').trim() || p.notice)}`)
+  }
+  const buy = document.querySelector('#prices .btn-primary[href*="palisis"], #prices a.btn-primary')
+  if (buy && p.buyOnlineUrl) buy.href = p.buyOnlineUrl
+  const pdf = document.querySelector('#prices .btn-secondary[href$=".pdf"], #prices a.btn-secondary')
+  if (pdf && p.flyerPdfUrl) pdf.href = p.flyerPdfUrl
+
+  if (Array.isArray(p.flyerImages) && p.flyerImages.length) {
+    const container = document.querySelector('.flyer-container')
+    if (container) {
+      container.innerHTML = p.flyerImages.map(img => {
+        const url = urlFor(img).width(900).fit('max').url()
+        return `<div class="flyer-card"><img src="${url}" alt="${escapeHtml(img.alt || 'Pricing flyer')}" loading="lazy"></div>`
+      }).join('')
+    }
+  }
+}
+
+function renderContact(c) {
+  if (!c) return
+  const items = document.querySelectorAll('#contact .contact-card__item')
+  if (items[0]) {
+    const a = items[0].querySelector('a.contact-card__info-value')
+    if (a) { a.textContent = c.phone; a.href = `tel:${c.phone.replace(/[^+\d]/g,'')}` }
+  }
+  if (items[1]) {
+    const a = items[1].querySelector('a.contact-card__info-value')
+    if (a) { a.textContent = c.email; a.href = `mailto:${c.email}` }
+  }
+  if (items[2]) {
+    const v = items[2].querySelector('.contact-card__info-value')
+    if (v) v.textContent = c.address
+  }
+
+  // Footer phone / email
+  document.querySelectorAll('a.footer__link[href^="tel:"]').forEach(a => { a.textContent = `📞 ${c.phone.replace(/^\+27\s?/, '0')}`; a.href = `tel:${c.phone.replace(/[^+\d]/g,'')}` })
+  document.querySelectorAll('a.footer__link[href^="mailto:"]').forEach(a => { a.textContent = `✉️ ${c.email}`; a.href = `mailto:${c.email}` })
+
+  // Social links across page
+  if (c.facebookUrl) document.querySelectorAll('a[href*="facebook.com/coolrunnings"]').forEach(a => a.href = c.facebookUrl)
+  if (c.instagramUrl) document.querySelectorAll('a[href*="instagram.com/coolrunnings"]').forEach(a => a.href = c.instagramUrl)
+  if (c.whatsappUrl) document.querySelectorAll('a.whatsapp-btn, a[href^="https://wa.me/"]').forEach(a => a.href = c.whatsappUrl)
+}
+
+function renderGallery(items) {
+  if (!Array.isArray(items) || !items.length) return
+  const target = document.querySelector('#contact .inline-gallery-2col')
+  if (!target) return
+  target.innerHTML = items.map(g => {
+    const small = urlFor(g.image).width(800).fit('max').url()
+    const large = urlFor(g.image).width(1600).fit('max').url()
+    return `<div class="embedded-img" data-img="${large}"><img src="${small}" alt="${escapeHtml(g.alt)}" loading="lazy" decoding="async"></div>`
+  }).join('')
+}
+
+function renderNews(items) {
+  const wrap = document.querySelector('[data-cms-news]')
+  const list = wrap?.querySelector('.news-list')
+  if (!wrap || !list) return
+  if (!Array.isArray(items) || !items.length) { wrap.hidden = true; return }
+  wrap.hidden = false
+  list.innerHTML = items.map(n => {
+    const date = n.publishedAt ? new Date(n.publishedAt).toLocaleDateString('en-ZA', {year:'numeric', month:'long', day:'numeric'}) : ''
+    const img = n.image?.asset ? `<img src="${urlFor(n.image).width(800).url()}" alt="" style="width:100%;border-radius:var(--radius-md);margin-bottom:12px;loading:lazy">` : ''
+    return `<article class="glass-card" style="text-align:left">
+      ${img}
+      <h3 style="font-family:var(--font-display);font-size:1.5rem;letter-spacing:1px;color:var(--yellow);margin-bottom:6px">${escapeHtml(n.title)}</h3>
+      ${date ? `<p style="font-size:.8125rem;color:rgba(255,255,255,0.55);margin-bottom:12px">${date}${n.pinned ? ' &nbsp;•&nbsp; <strong style="color:var(--yellow)">Pinned</strong>' : ''}</p>` : ''}
+      <div>${renderPortableText(n.body)}</div>
+    </article>`
+  }).join('')
+}
+
+function renderPortableText(blocks) {
+  if (!Array.isArray(blocks)) return ''
+  return blocks.map(b => {
+    if (b._type !== 'block') return ''
+    const text = (b.children || []).map(c => escapeHtml(c.text || '')).join('')
+    if (b.style === 'h2') return `<h2 style="font-size:1.25rem;margin:8px 0">${text}</h2>`
+    if (b.style === 'h3') return `<h3 style="font-size:1.0625rem;margin:8px 0">${text}</h3>`
+    return `<p style="line-height:1.6;margin:0 0 10px">${text}</p>`
+  }).join('')
+}
+
+function escapeHtml(s) {
+  if (s == null) return ''
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+}
+
+client.fetch(QUERY).then(data => {
+  renderHero(data.hero)
+  renderHours(data.hours)
+  renderPricing(data.pricing)
+  renderContact(data.contact)
+  renderGallery(data.gallery)
+  renderNews(data.news)
+}).catch(err => {
+  console.warn('[Sanity] Could not load CMS content. Falling back to static content.', err)
+})
 </script>
 </body>
 </html>
